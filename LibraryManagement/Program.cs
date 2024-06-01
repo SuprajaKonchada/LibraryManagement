@@ -1,13 +1,5 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using LibraryManagement.Models;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using LibraryManagement.Data;
 using System.Text.Json;
 
@@ -28,14 +20,29 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// ISBN validation function
-bool IsValidIsbn(string isbn)
+// Function to validate book data
+static string? BookDataValidation(string title, DateTime publicationDate, string isbn, string authorName)
 {
-    return isbn.Length == 10 || isbn.Length == 13;
+
+    if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(isbn) || string.IsNullOrWhiteSpace(authorName) || publicationDate == default)
+    {
+        return "Invalid book data.";
+    }
+
+    if (publicationDate > DateTime.UtcNow)
+    {
+        return "Publication date cannot be in the future.";
+    }
+
+    if (!(isbn.Length == 10 || isbn.Length == 13))
+    {
+        return "ISBN must be either 10 or 13 characters long.";
+    }
+
+    return null;
 }
 
 // Endpoint definitions
-
 app.MapGet("/books", async (LibraryDbContext db) =>
 {
     var books = await db.Books.Include(b => b.BookAuthors).ThenInclude(ba => ba.Author).ToListAsync();
@@ -76,24 +83,16 @@ app.MapPost("/books", async (HttpContext context, LibraryDbContext db) =>
         return Results.BadRequest("Missing required book data.");
     }
 
-    string title = titleElement.GetString();
-    DateTime publicationDate = DateTime.Parse(publicationDateElement.GetString());
-    string isbn = isbnElement.GetString();
-    string authorName = authorNameElement.GetString();
+    string title = titleElement.GetString()!;
+    DateTime publicationDate = DateTime.Parse(publicationDateElement.GetString()!);
+    string isbn = isbnElement.GetString()!;
+    string authorName = authorNameElement.GetString()!;
 
-    if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(isbn) || string.IsNullOrWhiteSpace(authorName) || publicationDate == default)
-    {
-        return Results.BadRequest("Invalid book data.");
-    }
+    string? errorMessage = BookDataValidation(title, publicationDate, isbn, authorName);
 
-    if (publicationDate > DateTime.UtcNow)
+    if (errorMessage != null)
     {
-        return Results.BadRequest("Publication date cannot be in the future.");
-    }
-
-    if (!IsValidIsbn(isbn))
-    {
-        return Results.BadRequest("ISBN must be either 10 or 13 characters long.");
+        return Results.BadRequest(errorMessage);
     }
 
     // Ensure the ISBN is unique
@@ -132,7 +131,6 @@ app.MapPost("/books", async (HttpContext context, LibraryDbContext db) =>
     return Results.Created($"/books/{book.Id}", result);
 });
 
-
 app.MapPut("/books/{id}", async (int id, HttpContext context, LibraryDbContext db) =>
 {
     using var bodyReader = await JsonDocument.ParseAsync(context.Request.Body);
@@ -148,24 +146,16 @@ app.MapPut("/books/{id}", async (int id, HttpContext context, LibraryDbContext d
         return Results.BadRequest("Missing required book data.");
     }
 
-    string title = titleElement.GetString();
-    DateTime publicationDate = DateTime.Parse(publicationDateElement.GetString());
-    string isbn = isbnElement.GetString();
-    string authorName = authorNameElement.GetString();
+    string title = titleElement.GetString()!;
+    DateTime publicationDate = DateTime.Parse(publicationDateElement.GetString()!);
+    string isbn = isbnElement.GetString()!;
+    string authorName = authorNameElement.GetString()!;
 
-    if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(isbn) || publicationDate == default)
-    {
-        return Results.BadRequest("Invalid book data.");
-    }
+    string? errorMessage = BookDataValidation(title, publicationDate, isbn, authorName);
 
-    if (publicationDate > DateTime.UtcNow)
+    if (errorMessage != null)
     {
-        return Results.BadRequest("Publication date cannot be in the future.");
-    }
-
-    if (!IsValidIsbn(isbn))
-    {
-        return Results.BadRequest("ISBN must be either 10 or 13 characters long.");
+        return Results.BadRequest(errorMessage);
     }
 
     // Ensure the ISBN is unique or belongs to the same book being updated
@@ -175,7 +165,7 @@ app.MapPut("/books/{id}", async (int id, HttpContext context, LibraryDbContext d
     }
 
     // Check if the author name is being modified
-    if (authorName != book.BookAuthors.FirstOrDefault()?.Author.Name)
+    if (book.BookAuthors.FirstOrDefault()?.Author.Name != authorName)
     {
         return Results.BadRequest("Author name cannot be modified.");
     }
